@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+<meta name="description" content="Mapa colaborativo de presencia policial en las rutas de la provincia de Cordoba.">
+<meta name="theme-color" content="#0f1216">
+<title>Camino Libre — rutas de Córdoba</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; padding:0; height:100%; overflow:hidden;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:#0f1216; color:#e8eaee; }
+  #app{ display:flex; height:100%; }
+  #panel{ width:350px; flex-shrink:0; display:flex; flex-direction:column;
+    background:#141920; border-right:1px solid #232a34; }
+  #mapa{ flex:1; background:#0f1216; position:relative; }
+
+  .cab{ padding:16px 18px 13px; border-bottom:1px solid #232a34;
+    display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  h1{ font-size:16px; margin:0 0 3px; font-weight:500; letter-spacing:-.01em; }
+  .sub{ font-size:11.5px; color:#7d879a; }
+  .punto{ width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:6px; }
+
+  .kpis{ display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:14px 18px; }
+  .kpi{ background:#1a212b; border-radius:8px; padding:10px 12px; }
+  .kpi .lab{ font-size:10.5px; color:#7d879a; margin-bottom:2px; }
+  .kpi .val{ font-size:22px; font-weight:500; font-variant-numeric:tabular-nums; }
+
+  #lista{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:0 18px 16px; }
+  .seccion{ font-size:10.5px; text-transform:uppercase; letter-spacing:.09em;
+    padding:10px 0 8px; display:flex; align-items:center; gap:7px; }
+  .seccion.act{ color:#4ade80; }
+  .seccion.ven{ color:#6d7789; border-top:1px solid #232a34; margin-top:10px; padding-top:14px; }
+  .seccion .n{ background:#1a212b; border-radius:10px; padding:1px 7px;
+    font-size:10.5px; letter-spacing:0; }
+
+  .item{ padding:11px 12px; margin-bottom:6px; cursor:pointer; transition:.12s;
+    background:#1a212b; border-left:3px solid #EF9F27; }
+  .item:active{ background:#212a36; }
+  .item.act{ background:rgba(74,222,128,.10); border-left-color:#4ade80; }
+  .item.ven{ opacity:.55; border-left-color:#4a5260; }
+  .item .lugar{ font-size:13.5px; font-weight:500; }
+  .item .txt{ font-size:12px; color:#a8b1c0; font-style:italic;
+    margin-top:4px; line-height:1.45; }
+  .item .meta{ font-size:11px; color:#6d7789; margin-top:4px; }
+  .item.act .meta{ color:#4ade80; }
+  .item .lv{ font-size:11px; color:#7d879a; margin-top:6px; line-height:1.4;
+    border-top:1px solid rgba(255,255,255,.07); padding-top:5px; }
+  .tags{ margin-top:5px; display:flex; gap:5px; flex-wrap:wrap; }
+  .tag{ font-size:10.5px; padding:2px 8px; border-radius:10px;
+    background:rgba(74,222,128,.16); color:#4ade80; }
+  .item.ven .tag{ background:rgba(180,190,205,.12); color:#9aa4b4; }
+  .vacio{ font-size:12px; color:#5d6675; padding:10px 0; line-height:1.5; }
+
+  .pie{ padding:11px 18px; border-top:1px solid #232a34; font-size:10.5px;
+    color:#5d6675; line-height:1.5; }
+
+  #avisar{ position:absolute; right:16px; bottom:26px; z-index:600;
+    background:#EF9F27; color:#20160a; border:none; border-radius:26px;
+    padding:13px 20px; font-size:14.5px; font-weight:500; cursor:pointer;
+    box-shadow:0 6px 20px rgba(0,0,0,.45); font-family:inherit; }
+  #avisar:active{ transform:scale(.97); }
+
+  #velo{ position:fixed; inset:0; background:rgba(8,10,14,.72); z-index:1200;
+    display:none; align-items:center; justify-content:center; padding:18px; }
+  #velo.on{ display:flex; }
+  .modal{ background:#161c25; border:1px solid #2c3542; border-radius:14px;
+    width:100%; max-width:380px; padding:20px; }
+  .modal h2{ font-size:16px; margin:0 0 4px; font-weight:500; }
+  .modal p.aclara{ font-size:12px; color:#7d879a; margin:0 0 16px; line-height:1.5; }
+  .opt{ display:flex; align-items:center; gap:11px; padding:12px;
+    border:1px solid #2c3542; border-radius:9px; margin-bottom:8px; cursor:pointer; }
+  .opt.sel{ border-color:#EF9F27; background:rgba(239,159,39,.10); }
+  .opt .box{ width:19px; height:19px; border-radius:5px; border:1.5px solid #4a5260;
+    flex-shrink:0; display:flex; align-items:center; justify-content:center;
+    font-size:12px; color:#20160a; }
+  .opt.sel .box{ background:#EF9F27; border-color:#EF9F27; }
+  .opt .nom{ font-size:14px; }
+  .opt .det{ font-size:11.5px; color:#7d879a; margin-top:1px; }
+  .acciones{ display:flex; gap:9px; margin-top:16px; }
+  .acciones button{ flex:1; padding:12px; border-radius:9px; font-size:14px;
+    cursor:pointer; font-family:inherit; border:1px solid #2c3542;
+    background:transparent; color:#a8b1c0; }
+  .acciones button.ok{ background:#EF9F27; color:#20160a; border-color:#EF9F27;
+    font-weight:500; }
+  .acciones button:disabled{ opacity:.5; cursor:default; }
+  .estado{ font-size:12px; margin-top:12px; line-height:1.5; min-height:1px; }
+  .estado.err{ color:#f0a0a0; }
+  .estado.ok{ color:#4ade80; }
+
+  #tirador{ display:none; }
+  .leaflet-container{ background:#0f1216; font-family:inherit; }
+  .leaflet-popup-content-wrapper{ background:#1a212b; color:#e8eaee; border-radius:8px; }
+  .leaflet-popup-tip{ background:#1a212b; }
+  .leaflet-popup-content{ margin:12px 14px; font-size:13px; line-height:1.55; }
+  .pt{ font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; font-weight:500; }
+  .px{ font-style:italic; color:#a8b1c0; margin:6px 0; }
+  .pm{ font-size:11.5px; color:#7d879a; }
+  .pl{ font-size:11.5px; color:#7d879a; margin-top:7px;
+    border-top:1px solid #2c3542; padding-top:6px; line-height:1.45; }
+  .leaflet-bar a{ background:#1a212b; color:#e8eaee; border-bottom-color:#2c3542; }
+  .leaflet-control-attribution{ background:rgba(20,25,32,.85); color:#6d7789; font-size:10px; }
+  .leaflet-control-attribution a{ color:#8b95a7; }
+  .leaflet-control-layers{ background:#1a212b; color:#e8eaee; border:1px solid #2c3542; }
+  .leaflet-control-layers-expanded{ padding:8px 12px 8px 8px; font-size:13px; }
+  .leaflet-control-scale-line{ background:rgba(20,25,32,.85); border-color:#3d4757; color:#a8b1c0; }
+
+  @media (max-width:820px){
+    #app{ flex-direction:column; }
+    #mapa{ order:1; flex:1 1 auto; min-height:0; }
+    #panel{ order:2; width:100%; height:52vh; max-height:52vh;
+      border-right:none; border-top:1px solid #232a34;
+      border-radius:14px 14px 0 0; margin-top:-14px; position:relative; z-index:500; }
+    #tirador{ display:block; width:38px; height:4px; border-radius:2px;
+      background:#3d4757; margin:8px auto 0; }
+    .cab{ padding:10px 16px 11px; }
+    h1{ font-size:15px; }
+    .kpis{ padding:11px 16px; }
+    #lista{ padding:0 16px 14px; }
+    .pie{ padding:9px 16px; }
+    #avisar{ right:12px; bottom:12px; padding:12px 18px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="mapa">
+    <button id="avisar">Avisar un control</button>
+  </div>
+  <div id="panel">
+    <div id="tirador"></div>
+    <div class="cab">
+      <div>
+        <h1>Camino Libre</h1>
+        <div class="sub" id="sub">Cargando&hellip;</div>
+      </div>
+      <div class="punto" id="punto"></div>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="lab">Activos ahora</div>
+        <div class="val" id="k-act" style="color:#4ade80">0</div></div>
+      <div class="kpi"><div class="lab">Reportes del d&iacute;a</div>
+        <div class="val" id="k-tot">0</div></div>
+    </div>
+    <div id="lista"></div>
+    <div class="pie">
+      Un reporte vale 2&nbsp;h desde que lo avisaron y se borra a las 24&nbsp;h.
+      Son reportes de usuarios, sin verificar. No uses el celular manejando.
+    </div>
+  </div>
+</div>
+
+<div id="velo">
+  <div class="modal">
+    <h2>&iquest;Qu&eacute; est&aacute;n controlando?</h2>
+    <p class="aclara">Eleg&iacute; una o m&aacute;s. Se marca con tu ubicaci&oacute;n, la fecha y la hora.</p>
+    <div class="opt" data-t="alcoholemia"><div class="box">&#10003;</div>
+      <div><div class="nom">Alcoholemia</div><div class="det">Test de alcohol</div></div></div>
+    <div class="opt" data-t="velocidad"><div class="box">&#10003;</div>
+      <div><div class="nom">Velocidad</div><div class="det">Radar o cinem&oacute;metro</div></div></div>
+    <div class="opt" data-t="control"><div class="box">&#10003;</div>
+      <div><div class="nom">Solo control</div><div class="det">Papeles, sin radar</div></div></div>
+    <div class="estado" id="estado"></div>
+    <div class="acciones">
+      <button id="cancelar">Cancelar</button>
+      <button id="ok" class="ok">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<script src="/__/firebase/10.12.2/firebase-app-compat.js"></script>
+<script src="/__/firebase/10.12.2/firebase-firestore-compat.js"></script>
+<script src="/__/firebase/init.js"></script>
+<script src="datos.js"></script>
+<script>
+(function(){
+  var D = window.DATOS || { generado:null, reportes:[] };
+
+  var REF = [
+    ['Cordoba Capital',-31.4201,-64.1888], ['General Paz',-31.36,-64.15],
+    ['Juarez Celman',-31.2597,-64.1706], ['Peaje RN9 Norte',-31.20,-64.12],
+    ['Jesus Maria',-30.9814,-64.0947], ['Sinsacate',-30.9375,-64.08],
+    ['Cruce RN60',-30.90,-64.08], ['Barranca Yaco',-30.82,-64.03],
+    ['Villa del Totoral',-30.7003,-63.9822], ['Simbolar',-30.60,-63.95],
+    ['La Dormida',-30.50,-63.90], ['Rayo Cortado',-30.06,-63.75],
+    ['Las Chilcas',-29.98,-63.73], ['Rio Seco',-29.90,-63.68],
+    ['Villa Carlos Paz',-31.4241,-64.4978], ['Cosquin',-31.2447,-64.4653],
+    ['La Falda',-31.0917,-64.4903], ['Alta Gracia',-31.6539,-64.4283],
+    ['Rio Segundo',-31.6511,-63.9111], ['Pilar',-31.6772,-63.8792],
+    ['Villa Maria',-32.4103,-63.24], ['Rio Cuarto',-33.1232,-64.3493],
+    ['Monte Cristo',-31.3419,-63.945], ['Arroyito',-31.4181,-63.05],
+    ['San Francisco',-31.4283,-62.0839]
+  ];
+  var NOMBRE_TIPO = { alcoholemia:'Alcoholemia', velocidad:'Velocidad', control:'Solo control' };
+
+  function cerca(lat, lon){
+    var mejor = null, dmin = 1e9;
+    REF.forEach(function(p){
+      var dy=(lat-p[1])*111, dx=(lon-p[2])*95;
+      var d=Math.sqrt(dy*dy+dx*dx);
+      if(d<dmin){ dmin=d; mejor=p[0]; }
+    });
+    if(!mejor) return 'Ubicacion marcada';
+    if(dmin < 3) return mejor;
+    return 'cerca de ' + mejor + ' (' + Math.round(dmin) + ' km)';
+  }
+
+  function dosd(n){ return (n<10?'0':'')+n; }
+  function hora(d){ return dosd(d.getHours())+':'+dosd(d.getMinutes()); }
+  function edad(m){
+    if(m<1) return 'recien';
+    if(m<60) return 'hace '+m+' min';
+    var h=Math.floor(m/60);
+    if(h<24) return 'hace '+h+' h'+(m%60?' '+(m%60)+' min':'');
+    return 'hace '+Math.floor(h/24)+' d';
+  }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+  var mapa = L.map('mapa', { zoomControl:false, minZoom:5, maxZoom:19, tap:true })
+              .setView([-31.0,-64.05], 8);
+  var calles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:'&copy; OpenStreetMap', maxZoom:19, maxNativeZoom:19 });
+  var relieve = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    attribution:'&copy; OpenStreetMap, SRTM &mdash; OpenTopoMap', maxZoom:17, maxNativeZoom:17 });
+  calles.addTo(mapa);
+  L.control.zoom({ position:'topright' }).addTo(mapa);
+  L.control.layers({ 'Calles':calles, 'Relieve':relieve }, null, { position:'topright' }).addTo(mapa);
+  L.control.scale({ position:'bottomleft', imperial:false }).addTo(mapa);
+
+  var capa = L.layerGroup().addTo(mapa);
+  var marcas = {};
+  var deChat = (D.reportes || []).filter(function(r){ return r.tipo === 'CAMINERA'; })
+    .map(function(r, i){
+      return { id:'w'+i, lugar:r.referencia, texto:r.texto, sentido:r.sentido,
+               lat:r.lat, lon:r.lon, fecha:new Date(r.fecha), tipos:null,
+               levantado_hora:r.levantado_hora, levantado_texto:r.levantado_texto,
+               forzarVencido: !r.vigente };
+    });
+  var deWeb = [];
+  var primerEncuadre = true;
+
+  function render(){
+    var ahora = Date.now();
+    var todos = deChat.concat(deWeb).map(function(r){
+      var min = Math.max(0, Math.round((ahora - r.fecha.getTime())/60000));
+      var vig = min <= 120 && !r.forzarVencido && !r.levantado_hora;
+      return Object.assign({}, r, { minutos:min, vigente:vig });
+    });
+    todos.sort(function(a,b){ return b.fecha - a.fecha; });
+
+    var VIG = todos.filter(function(r){ return r.vigente; });
+    var VEN = todos.filter(function(r){ return !r.vigente; });
+
+    capa.clearLayers(); marcas = {};
+    todos.forEach(function(r){
+      var col = r.vigente ? '#4ade80' : '#5f6672';
+      var m = L.circleMarker([r.lat, r.lon], {
+        radius: r.vigente ? 10 : 6, fillColor: col, color:'#0f1216',
+        weight:2.5, fillOpacity: r.vigente ? .95 : .5 });
+      m.bindPopup(
+        '<div class="pt" style="color:'+col+'">'+(r.vigente?'Activo ahora':'Ya no est&aacute;')+'</div>'+
+        '<div style="margin-top:4px"><b>'+esc(r.lugar)+'</b>'+
+          (r.sentido?' &middot; sentido '+esc(r.sentido):'')+'</div>'+
+        (r.tipos ? '<div class="pm" style="margin-top:4px">'+
+            r.tipos.map(function(t){return NOMBRE_TIPO[t]||t;}).join(' &middot; ')+'</div>' : '')+
+        (r.texto ? '<div class="px">&ldquo;'+esc(r.texto)+'&rdquo;</div>' : '')+
+        '<div class="pm">Avisado '+hora(r.fecha)+' &middot; '+edad(r.minutos)+'</div>'+
+        (r.levantado_hora ? '<div class="pl">Avisaron que se fue a las '+esc(r.levantado_hora)+
+          '<br>&ldquo;'+esc(r.levantado_texto)+'&rdquo;</div>' : ''));
+      marcas[r.id] = m; capa.addLayer(m);
+    });
+
+    var lista = document.getElementById('lista');
+    lista.innerHTML = '';
+
+    function encabezado(t, n, c){
+      var h=document.createElement('div'); h.className='seccion '+c;
+      h.innerHTML = esc(t)+'<span class="n">'+n+'</span>'; return h;
+    }
+    function fila(r, c){
+      var d=document.createElement('div'); d.className='item '+c;
+      d.innerHTML =
+        '<div class="lugar">'+esc(r.lugar)+
+          (r.sentido?' <span style="color:#7d879a;font-weight:400">&middot; sentido '+esc(r.sentido)+'</span>':'')+'</div>'+
+        (r.tipos ? '<div class="tags">'+r.tipos.map(function(t){
+            return '<span class="tag">'+esc(NOMBRE_TIPO[t]||t)+'</span>'; }).join('')+'</div>' : '')+
+        (r.texto ? '<div class="txt">&ldquo;'+esc(r.texto)+'&rdquo;</div>' : '')+
+        '<div class="meta">Avisado '+hora(r.fecha)+' &middot; '+edad(r.minutos)+'</div>'+
+        (r.levantado_hora ? '<div class="lv">Se fue &mdash; avisado '+esc(r.levantado_hora)+
+          ': &ldquo;'+esc(r.levantado_texto)+'&rdquo;</div>' : '');
+      d.onclick = function(){
+        mapa.flyTo([r.lat, r.lon], 12, { duration:.7 });
+        setTimeout(function(){ if(marcas[r.id]) marcas[r.id].openPopup(); }, 720);
+      };
+      return d;
+    }
+
+    lista.appendChild(encabezado('Activos ahora', VIG.length, 'act'));
+    if(VIG.length){ VIG.forEach(function(r){ lista.appendChild(fila(r,'act')); }); }
+    else {
+      var v=document.createElement('div'); v.className='vacio';
+      v.textContent='Ningún control activo en este momento.'; lista.appendChild(v);
+    }
+    if(VEN.length){
+      lista.appendChild(encabezado('Ya no están', VEN.length, 'ven'));
+      VEN.forEach(function(r){ lista.appendChild(fila(r,'ven')); });
+    }
+
+    document.getElementById('k-act').textContent = VIG.length;
+    document.getElementById('k-tot').textContent = todos.length;
+    var punto = document.getElementById('punto');
+    punto.style.background = VIG.length ? '#EF9F27' : '#4ade80';
+
+    var sub = document.getElementById('sub');
+    sub.textContent = todos.length ? (VIG.length ? 'Hay controles activos' : 'Corredor despejado')
+                                   : 'Sin reportes cargados';
+
+    if(primerEncuadre && todos.length){
+      primerEncuadre = false;
+      var enc = VIG.length ? VIG : todos;
+      mapa.fitBounds(L.latLngBounds(enc.map(function(r){ return [r.lat,r.lon]; })).pad(0.3));
+    }
+  }
+
+  render();
+  setInterval(render, 60000);
+
+  var db = null;
+  try {
+    if(window.firebase && firebase.apps && firebase.apps.length){ db = firebase.firestore(); }
+  } catch(e){ db = null; }
+
+  if(db){
+    db.collection('avisos').orderBy('creado','desc').limit(200)
+      .onSnapshot(function(snap){
+        var corte = Date.now() - 24*3600*1000;
+        deWeb = [];
+        snap.forEach(function(doc){
+          var d = doc.data();
+          if(!d.creado || !d.creado.toDate) return;
+          var f = d.creado.toDate();
+          if(f.getTime() < corte) return;
+          deWeb.push({ id:'f'+doc.id, lugar:cerca(d.lat,d.lon), texto:null,
+                       sentido:null, lat:d.lat, lon:d.lon, fecha:f,
+                       tipos:(d.tipos||[]), levantado_hora:null, levantado_texto:null,
+                       forzarVencido:false });
+        });
+        render();
+      }, function(err){ console.log('firestore', err); });
+  }
+
+  var velo = document.getElementById('velo');
+  var estado = document.getElementById('estado');
+  var btnOk = document.getElementById('ok');
+  var sel = {};
+
+  document.getElementById('avisar').onclick = function(){
+    sel = {}; estado.textContent=''; estado.className='estado';
+    document.querySelectorAll('.opt').forEach(function(o){ o.classList.remove('sel'); });
+    btnOk.disabled = false; btnOk.textContent = 'Confirmar';
+    velo.classList.add('on');
+  };
+  document.getElementById('cancelar').onclick = function(){ velo.classList.remove('on'); };
+  velo.onclick = function(e){ if(e.target === velo) velo.classList.remove('on'); };
+
+  document.querySelectorAll('.opt').forEach(function(o){
+    o.onclick = function(){
+      var t = o.dataset.t;
+      if(sel[t]){ delete sel[t]; o.classList.remove('sel'); }
+      else { sel[t] = true; o.classList.add('sel'); }
+    };
+  });
+
+  btnOk.onclick = function(){
+    var tipos = Object.keys(sel);
+    if(!tipos.length){
+      estado.className='estado err';
+      estado.textContent='Elegí al menos un tipo de control.';
+      return;
+    }
+    if(!db){
+      estado.className='estado err';
+      estado.textContent='No hay conexión con la base. Probá de nuevo en un rato.';
+      return;
+    }
+    if(!navigator.geolocation){
+      estado.className='estado err';
+      estado.textContent='Tu navegador no permite compartir ubicación.';
+      return;
+    }
+    btnOk.disabled = true; btnOk.textContent = 'Ubicando…';
+    estado.className='estado'; estado.textContent='Buscando tu ubicación…';
+
+    navigator.geolocation.getCurrentPosition(function(pos){
+      var lat = pos.coords.latitude, lon = pos.coords.longitude;
+      if(lat < -36 || lat > -28 || lon < -67 || lon > -61){
+        btnOk.disabled=false; btnOk.textContent='Confirmar';
+        estado.className='estado err';
+        estado.textContent='Tu ubicación está fuera de Córdoba, no se puede cargar.';
+        return;
+      }
+      btnOk.textContent='Guardando…';
+      var ahora = new Date();
+      db.collection('avisos').add({
+        lat: Math.round(lat*100000)/100000,
+        lon: Math.round(lon*100000)/100000,
+        tipos: tipos,
+        precision: Math.round(pos.coords.accuracy||0),
+        creado: firebase.firestore.FieldValue.serverTimestamp(),
+        expira: firebase.firestore.Timestamp.fromDate(new Date(ahora.getTime()+24*3600*1000))
+      }).then(function(){
+        estado.className='estado ok';
+        estado.textContent='Listo. Marcado en ' + cerca(lat,lon) + ', ' +
+          dosd(ahora.getDate())+'/'+dosd(ahora.getMonth()+1)+' a las '+hora(ahora)+'.';
+        btnOk.textContent='Cargado';
+        setTimeout(function(){ velo.classList.remove('on'); }, 2200);
+      }).catch(function(err){
+        btnOk.disabled=false; btnOk.textContent='Confirmar';
+        estado.className='estado err';
+        estado.textContent='No se pudo guardar: '+(err && err.code ? err.code : 'error');
+      });
+    }, function(err){
+      btnOk.disabled=false; btnOk.textContent='Confirmar';
+      estado.className='estado err';
+      estado.textContent = err.code===1
+        ? 'Necesito permiso de ubicación para marcar el control.'
+        : 'No pude obtener tu ubicación. Probá de nuevo.';
+    }, { enableHighAccuracy:true, timeout:15000, maximumAge:30000 });
+  };
+
+  window.addEventListener('resize', function(){ mapa.invalidateSize(); });
+})();
+</script>
+</body>
+</html>
